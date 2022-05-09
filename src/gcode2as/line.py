@@ -19,4 +19,8 @@ class Line:
 
     geometry: dict = field(default_factory=lambda: {})
 
-    extrude: float = field(default=(0.0))
+    extrude: float = field(default=0.0)
+
+    @property
+    def has_extrude(self):
+        return self.extrude > 0

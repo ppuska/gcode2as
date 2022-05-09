@@ -6,7 +6,6 @@ from os import path
 import gcode2as
 from gcode2as.parser import parse
 
-
 FILE_PATH = "file_path"
 
 
@@ -18,7 +17,12 @@ def parse_system_args(args):
     arg_parser.add_argument('--version', action='version', version=f"gcode2as: {gcode2as.__version__}")
 
     # input file
-    arg_parser.add_argument('-f', '--file', dest=FILE_PATH, type=str, help="The source G-Code file to read")
+    arg_parser.add_argument('-f', '--file',
+                            dest=FILE_PATH,
+                            type=str,
+                            required=True,
+                            help="The source G-Code file to read"
+                            )
 
     return arg_parser.parse_args(args)
 
@@ -43,8 +47,3 @@ def main():
 
     for line in line_generator:
         print(parse(line))
-
-
-
-if __name__ == "__main__":
-    main()
