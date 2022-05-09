@@ -6,7 +6,7 @@ ARGS = ["-f", "gcode/test.gcode"]
 # ARGS = ["--version"]
 
 def test_arg_parsing():
-    print(parse_system_args(ARGS))
+    print(vars(parse_system_args(ARGS)))
 
 
 if __name__ == '__main__':

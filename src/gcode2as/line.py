@@ -32,3 +32,20 @@ class Line:
     @property
     def has_extrude(self):
         return self.extrude > 0
+
+    @property
+    def zero_move(self):
+        x = self.geometry.get(self.X)
+        y = self.geometry.get(self.Y)
+        z = self.geometry.get(self.Z)
+
+        if x is not None and x != 0.0:
+            return False
+
+        if y is not None and y != 0.0:
+            return False
+
+        if z is not None and z != 0.0:
+            return False
+
+        return True

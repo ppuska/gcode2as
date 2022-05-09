@@ -1,7 +1,7 @@
 import logging
 import math
 
-from src.gcode2as.line import Line
+from gcode2as.line import Line
 
 
 class Converter:
@@ -84,7 +84,7 @@ class Converter:
         # region speed
 
         if line.feed != self.__prev_move.get(Line.F) and line.feed > 0.0:
-            as_str += f"\tSPEED {line.feed}\n"
+            as_str += f"\tSPEED {line.feed} MM/S ALWAYS\n"
             self.__prev_move[line.F] = line.feed  # set the new value
 
         # endregion
@@ -116,6 +116,11 @@ class Converter:
                 self.__section_current_size += as_str.count('\n')
                 return
 
+        # check if its a zero length move
+        if line.zero_move:
+            self.__lines_omitted += 1
+            return
+
         # region linear move
 
         as_str += "\tLMOVE SHIFT(a BY "
@@ -125,7 +130,7 @@ class Converter:
             self.__prev_move[line.X] = line_x
 
         elif self.__prev_move.get(line.X) is not None:
-            as_str += str(self.__prev_move.get(line.X))
+            as_str += f"{self.__prev_move.get(line.X)}, "
 
         else:
             line_invalid = True
@@ -135,7 +140,7 @@ class Converter:
             self.__prev_move[line.Y] = line_y
 
         elif self.__prev_move.get(line.Y) is not None:
-            as_str += str(self.__prev_move.get(line.Y))
+            as_str += f"{self.__prev_move.get(line.Y)}, "
 
         else:
             line_invalid = True
@@ -145,7 +150,7 @@ class Converter:
             self.__prev_move[line.Z] = line_z
 
         elif self.__prev_move.get(line.Z) is not None:
-            as_str += str(self.__prev_move.get(line.Z))
+            as_str += f"{self.__prev_move.get(line.Z)}, "
 
         else:
             line_invalid = True
@@ -175,12 +180,14 @@ class Converter:
         self.__file.close()
 
         # generate header file
-        self.__header_file.write(f".PROGRAM {self.__program_name}()\n")
-        for i in range(self.__section_number):
-            self.__header_file.write(f"\tCALL {self.__program_name}_{i}\n")
+        if self.__section_number > 0:
+            self.__header_file.write(f".PROGRAM {self.__program_name}()\n")
+            for i in range(self.__section_number):
+                self.__header_file.write(f"\tCALL {self.__program_name}_{i}\n")
+
+            self.__header_file.write(".END\n")
 
         # close the header file
-        self.__header_file.write(".END\n")
         self.__header_file.close()
 
         logging.info("Conversion done")
@@ -188,6 +195,10 @@ class Converter:
         logging.info("Omitted lines: %i", self.__lines_omitted)
         logging.info("Invalid lines: %i", self.__lines_invalid)
         logging.info("Converted lines: %i", self.__lines_converted)
+
+        logging.info(f"Program saved to {self.__file.name}")
+        if self.__section_number > 0:
+            logging.info(f"Header file saved as {self.__header_file.name}")
 
 
 
