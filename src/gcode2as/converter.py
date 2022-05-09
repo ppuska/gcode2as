@@ -80,11 +80,12 @@ class Converter:
 
         prev_x = self.__prev_move.get(line.X)
         prev_y = self.__prev_move.get(line.Y)
+        prev_z = self.__prev_move.get(line.Z)
 
         # region speed
 
         if line.feed != self.__prev_move.get(Line.F) and line.feed > 0.0:
-            as_str += f"\tSPEED {line.feed} MM/S ALWAYS\n"
+            as_str += f"\tSPEED {line.feed} MM/MIN ALWAYS\n"
             self.__prev_move[line.F] = line.feed  # set the new value
 
         # endregion
@@ -111,10 +112,11 @@ class Converter:
 
         else:
             if math.sqrt(x_x_2 + y_y_2) < self.__min_dist:
-                self.__lines_omitted += 1
-                self.__file.write(as_str)
-                self.__section_current_size += as_str.count('\n')
-                return
+                if line_z is None or line_z == prev_z:
+                    self.__lines_omitted += 1
+                    self.__file.write(as_str)
+                    self.__section_current_size += as_str.count('\n')
+                    return
 
         # check if its a zero length move
         if line.zero_move:

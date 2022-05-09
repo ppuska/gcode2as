@@ -11,6 +11,8 @@ from gcode2as.converter import Converter
 
 FILE_PATH = "file_path"
 OUTPUT_PATH = "output_file_dir"
+MIN_DIST = "minimum_distance"
+SIGNAL = "signal"
 DEBUG_MODE = "debug_mode"
 
 
@@ -35,6 +37,21 @@ def parse_system_args(args):
                             type=str,
                             help="The path of the directory of the output file"
                             )
+
+    # minimum distance
+    arg_parser.add_argument('--min_dist',
+                            dest=MIN_DIST,
+                            type=float,
+                            default=0.0,
+                            help="The minimum distance between two points in a G-Code command. Under this value"
+                                 "the command gets omitted from the AS code")
+
+    # extrusion signal
+    arg_parser.add_argument('-s', '--signal',
+                            dest=SIGNAL,
+                            type=int,
+                            default=2001,
+                            help="The signal number to turn on when there is an [E]xtrude command in the G-Code")
 
     # debug mode
     arg_parser.add_argument('-d', '--debug',
@@ -68,6 +85,10 @@ def main():
 
     debug_mode = vars(args)[DEBUG_MODE]
 
+    min_dist = vars(args)[MIN_DIST]
+
+    signal = vars(args)[SIGNAL]
+
     # get the line count
     line_generator = create_line_generator(file_path)
     line_count = sum(buffer.count("\n") for buffer in line_generator)
@@ -75,6 +96,8 @@ def main():
     try:
         converter = Converter(program_name=path.splitext(file_name)[0],
                               output_file_path=output_dir,
+                              extrude_signal=signal,
+                              min_dist=min_dist,
                               debug=debug_mode
                               )
 
