@@ -16,6 +16,9 @@ def parse(line: str) -> Line:
         elif word.startswith(Line.X) or word.startswith(Line.Y) or word.startswith(Line.Z):
             result.geometry[word[0]] = float(word[1:])
 
+        elif word.startswith(Line.F):
+            result.feed = float(word[1:])
+
         elif word.startswith(Line.E):
             result.extrude = float(word[1:])
 

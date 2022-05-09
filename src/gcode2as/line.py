@@ -13,11 +13,15 @@ class Line:
     Y: ClassVar[str] = 'Y'
     Z: ClassVar[str] = 'Z'
 
+    F: ClassVar[str] = 'F'
+
     E: ClassVar[str] = 'E'
 
     move_type: str = field(default="")  # the move type token in the line
 
     geometry: dict = field(default_factory=lambda: {})
+
+    feed: float = field(default=0.0)
 
     extrude: float = field(default=0.0)
 
