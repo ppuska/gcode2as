@@ -170,9 +170,17 @@ class Converter:
             self.__section_current_size += as_str.count('\n')
 
     def close(self):
-        self.__file.write(".END")
-
+        # close file
+        self.__file.write(".END\n")
         self.__file.close()
+
+        # generate header file
+        self.__header_file.write(f".PROGRAM {self.__program_name}()\n")
+        for i in range(self.__section_number):
+            self.__header_file.write(f"\tCALL {self.__program_name}_{i}\n")
+
+        # close the header file
+        self.__header_file.write(".END\n")
         self.__header_file.close()
 
         logging.info("Conversion done")
