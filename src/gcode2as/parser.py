@@ -6,7 +6,16 @@ def parse(line: str) -> Line:
 
     result = Line()
 
+    result.raw = line[:-1]
+
+    if line.startswith(";"):
+        result.is_comment = True
+
     for word in line.split(" "):
+        if word.startswith(";"):
+            # comment break out of the loop
+            break
+
         if word == Line.G0:
             result.move_type = Line.G0
 

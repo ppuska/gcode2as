@@ -11,7 +11,8 @@ class Converter:
                  output_file_path: str,
                  extrude_signal: int = 0,
                  section_size: int = 1000,
-                 min_dist: float = 2.0
+                 min_dist: float = 2.0,
+                 debug: bool = False
                  ):
         # store the program name
         self.__program_name = program_name
@@ -25,7 +26,7 @@ class Converter:
         self.__is_first_line = True
 
         # create a variable to hold the previous moves geometry
-        self.__prev_move = {}
+        self.__prev_move = { Line.X: 0.0, Line.Y: 0.0, Line.Z: 0.0 }
 
         # extrusion signal
         self.__extrude_signal = extrude_signal
@@ -43,9 +44,17 @@ class Converter:
         # minimum travel distance
         self.__min_dist = min_dist
 
+        # debug mode
+        self.__debug = debug
+
     def convert_parsed_line(self, line: Line):
 
         self.__lines_loaded += 1
+
+        # check if the line is comment
+        if line.is_comment:
+            self.__lines_invalid += 1
+            return
 
         # check if this is the first line in the file
         if self.__is_first_line:
@@ -62,7 +71,6 @@ class Converter:
 
         prev_x = self.__prev_move.get(line.X)
         prev_y = self.__prev_move.get(line.Y)
-        prev_z = self.__prev_move.get(line.Z)
 
         # calculate the distance to the previous point
         try:
@@ -70,7 +78,7 @@ class Converter:
             y_y_2 = (line_y - prev_y) ** 2
 
         except TypeError:
-            logging.debug("No previous move")
+            pass
 
         else:
             if math.sqrt(x_x_2 + y_y_2) < self.__min_dist:
@@ -131,12 +139,18 @@ class Converter:
         else:
             line_invalid = True
 
-        as_str = as_str[:-2] + ")\n"
+        as_str = as_str[:-2] + ")"
+
+        if self.__debug:
+            as_str += f" {line.raw}\n"
+
+        else:
+            as_str += " \n"
 
         # endregion
 
         if line_invalid:
-            logging.debug("Invalid line")
+            logging.debug(f"Invalid line: {line.raw}")
             self.__lines_invalid += 1
 
         else:
@@ -150,10 +164,10 @@ class Converter:
         self.__header_file.close()
 
         logging.info("Conversion done")
-        logging.info("Loaded lines: %x", self.__lines_loaded)
-        logging.info("Omitted lines: %x", self.__lines_omitted)
-        logging.info("Invalid lines: %x", self.__lines_invalid)
-        logging.info("Converted lines: %x", self.__lines_converted)
+        logging.info("Loaded lines: %i", self.__lines_loaded)
+        logging.info("Omitted lines: %i", self.__lines_omitted)
+        logging.info("Invalid lines: %i", self.__lines_invalid)
+        logging.info("Converted lines: %i", self.__lines_converted)
 
 
 

@@ -25,6 +25,10 @@ class Line:
 
     extrude: float = field(default=0.0)
 
+    is_comment: bool = field(default=False)
+
+    raw: str = field(default="")
+
     @property
     def has_extrude(self):
         return self.extrude > 0
