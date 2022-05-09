@@ -40,6 +40,7 @@ class Converter:
         # sectioning
         self.__section_number = 0
         self.__section_size = section_size
+        self.__section_current_size = 0
 
         # minimum travel distance
         self.__min_dist = min_dist
@@ -56,14 +57,22 @@ class Converter:
             self.__lines_invalid += 1
             return
 
+        # check if we need to begin a new section
+        if self.__section_current_size >= self.__section_size:
+            # program end script
+            self.__file.write(".END\n\n")
+            self.__section_number += 1
+            self.__section_current_size = 0 # reset the section size
+            self.__is_first_line = True
+
         # check if this is the first line in the file
         if self.__is_first_line:
-            self.__file.write(f".PROGRAM {self.__program_name}()\n")
+            self.__file.write(f".PROGRAM {self.__program_name}_{self.__section_number}()\n")
             self.__is_first_line = False
 
         line_invalid = False
 
-        as_str = "\t"  # indent the line
+        as_str = ""
 
         line_x = line.geometry.get(line.X)
         line_y = line.geometry.get(line.Y)
@@ -71,6 +80,26 @@ class Converter:
 
         prev_x = self.__prev_move.get(line.X)
         prev_y = self.__prev_move.get(line.Y)
+
+        # region speed
+
+        if line.feed != self.__prev_move.get(Line.F) and line.feed > 0.0:
+            as_str += f"\tSPEED {line.feed}\n"
+            self.__prev_move[line.F] = line.feed  # set the new value
+
+        # endregion
+
+        # region extrusion
+
+        if line.extrude and self.__prev_move.get(line.E) is None:
+            as_str += f"\tSIGNAL {self.__extrude_signal}\n"
+            self.__prev_move[line.E] = line.extrude  # set the new value
+
+        if not line.extrude and self.__prev_move.get(line.E) is not None:
+            as_str += f"\tSIGNAL -{self.__extrude_signal}\n"
+            self.__prev_move.pop(line.E)  # remove the Extrusion value
+
+        # endregion
 
         # calculate the distance to the previous point
         try:
@@ -83,31 +112,13 @@ class Converter:
         else:
             if math.sqrt(x_x_2 + y_y_2) < self.__min_dist:
                 self.__lines_omitted += 1
+                self.__file.write(as_str)
+                self.__section_current_size += as_str.count('\n')
                 return
-
-        # region speed
-
-        if line.feed != self.__prev_move.get(Line.F):
-            as_str += f"SPEED {line.feed}\n\t"
-            self.__prev_move[line.F] = line.feed  # set the new value
-
-        # endregion
-
-        # region extrusion
-
-        if line.extrude and self.__prev_move.get(line.E) is None:
-            as_str += f"SIGNAL {self.__extrude_signal}\n\t"
-            self.__prev_move[line.E] = line.extrude  # set the new value
-
-        if not line.extrude and self.__prev_move.get(line.E) is not None:
-            as_str += f"SIGNAL -{self.__extrude_signal}\n\t"
-            self.__prev_move.pop(line.E)  # remove the Extrusion value
-
-        # endregion
 
         # region linear move
 
-        as_str += "LMOVE SHIFT(a BY "
+        as_str += "\tLMOVE SHIFT(a BY "
 
         if line_x is not None:
             as_str += f"{line_x}, "
@@ -142,7 +153,7 @@ class Converter:
         as_str = as_str[:-2] + ")"
 
         if self.__debug:
-            as_str += f" {line.raw}\n"
+            as_str += f" ;{line.raw}\n"
 
         else:
             as_str += " \n"
@@ -156,6 +167,7 @@ class Converter:
         else:
             self.__file.write(as_str)
             self.__lines_converted += 1
+            self.__section_current_size += as_str.count('\n')
 
     def close(self):
         self.__file.write(".END")
