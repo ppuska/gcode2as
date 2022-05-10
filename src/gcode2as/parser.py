@@ -1,4 +1,4 @@
-from gcode2as.line import Line
+from .line import Line
 
 
 def parse(line: str) -> Line:

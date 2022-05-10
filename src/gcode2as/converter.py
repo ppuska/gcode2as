@@ -1,7 +1,7 @@
 import logging
 import math
 
-from gcode2as.line import Line
+from .line import Line
 
 
 class Converter:

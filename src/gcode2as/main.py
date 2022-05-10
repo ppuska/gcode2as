@@ -5,9 +5,9 @@ from os import path
 
 from progress.bar import IncrementalBar
 
-import gcode2as
-from gcode2as.parser import parse
-from gcode2as.converter import Converter
+from . import __version__
+from .parser import parse
+from .converter import Converter
 
 FILE_PATH = "file_path"
 OUTPUT_PATH = "output_file_dir"
@@ -21,7 +21,7 @@ def parse_system_args(args):
     # program name and description
     arg_parser = argparse.ArgumentParser(description="This script converts G-Code to Kawasaki AS Code")
     # version
-    arg_parser.add_argument('--version', action='version', version=f"gcode2as: {gcode2as.__version__}")
+    arg_parser.add_argument('--version', action='version', version=f"gcode2as: {__version__}")
 
     # input file
     arg_parser.add_argument('-f', '--file',
