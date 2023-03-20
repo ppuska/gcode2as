@@ -1,3 +1,7 @@
-*.egg_info
+*.egg-info
 .idea
 tests/gcode/*
+venv
+*.gcode
+*.pg
+*.pyc
