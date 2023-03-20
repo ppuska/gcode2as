@@ -1,207 +1,149 @@
-import logging
-import math
+"""Module for converting Line objects to AS code"""
 
-from .line import Line
+from typing import List
+from math import sqrt
 
+from progress.bar import IncrementalBar
 
-class Converter:
-    """This is a class for converting parsed G-Code lines to Kawasaki AS lines"""
-
-    def __init__(self, program_name: str,
-                 output_file_path: str,
-                 extrude_signal: int = 0,
-                 section_size: int = 1000,
-                 min_dist: float = 2.0,
-                 debug: bool = False
-                 ):
-        # store the program name
-        self.__program_name = program_name
-
-        # create a file for the program steps
-        self.__file = open(f"{output_file_path}/{program_name}.pg", 'w')
-
-        # create a 'header' file that contains all the subroutine calls
-        self.__header_file = open(f"{output_file_path}/{program_name}_header.pg", 'w')
-
-        self.__is_first_line = True
-
-        # create a variable to hold the previous moves geometry
-        self.__prev_move = { Line.X: 0.0, Line.Y: 0.0, Line.Z: 0.0 }
-
-        # extrusion signal
-        self.__extrude_signal = extrude_signal
-
-        # statistics
-        self.__lines_loaded = 0
-        self.__lines_converted = 0
-        self.__lines_omitted = 0
-        self.__lines_invalid = 0
-
-        # sectioning
-        self.__section_number = 0
-        self.__section_size = section_size
-        self.__section_current_size = 0
-
-        # minimum travel distance
-        self.__min_dist = min_dist
-
-        # debug mode
-        self.__debug = debug
-
-    def convert_parsed_line(self, line: Line):
-
-        self.__lines_loaded += 1
-
-        # check if the line is comment
-        if line.is_comment:
-            self.__lines_invalid += 1
-            return
-
-        # check if we need to begin a new section
-        if self.__section_current_size >= self.__section_size:
-            # program end script
-            self.__file.write(".END\n\n")
-            self.__section_number += 1
-            self.__section_current_size = 0 # reset the section size
-            self.__is_first_line = True
-
-        # check if this is the first line in the file
-        if self.__is_first_line:
-            self.__file.write(f".PROGRAM {self.__program_name}_{self.__section_number}()\n")
-            self.__is_first_line = False
-
-        line_invalid = False
-
-        as_str = ""
-
-        line_x = line.geometry.get(line.X)
-        line_y = line.geometry.get(line.Y)
-        line_z = line.geometry.get(line.Z)
-
-        prev_x = self.__prev_move.get(line.X)
-        prev_y = self.__prev_move.get(line.Y)
-        prev_z = self.__prev_move.get(line.Z)
-
-        # region speed
-
-        if line.feed != self.__prev_move.get(Line.F) and line.feed > 0.0:
-            as_str += f"\tSPEED {line.feed} MM/MIN ALWAYS\n"
-            self.__prev_move[line.F] = line.feed  # set the new value
-
-        # endregion
-
-        # region extrusion
-
-        if line.extrude and self.__prev_move.get(line.E) is None:
-            as_str += f"\tSIGNAL {self.__extrude_signal}\n"
-            self.__prev_move[line.E] = line.extrude  # set the new value
-
-        if not line.extrude and self.__prev_move.get(line.E) is not None:
-            as_str += f"\tSIGNAL -{self.__extrude_signal}\n"
-            self.__prev_move.pop(line.E)  # remove the Extrusion value
-
-        # endregion
-
-        # calculate the distance to the previous point
-        try:
-            x_x_2 = (line_x - prev_x) ** 2
-            y_y_2 = (line_y - prev_y) ** 2
-
-        except TypeError:
-            pass
-
-        else:
-            if math.sqrt(x_x_2 + y_y_2) < self.__min_dist:
-                if line_z is None or line_z == prev_z:
-                    self.__lines_omitted += 1
-                    self.__file.write(as_str)
-                    self.__section_current_size += as_str.count('\n')
-                    return
-
-        # check if its a zero length move
-        if line.zero_move:
-            self.__lines_omitted += 1
-            return
-
-        # region linear move
-
-        as_str += "\tLMOVE SHIFT(a BY "
-
-        if line_x is not None:
-            as_str += f"{line_x}, "
-            self.__prev_move[line.X] = line_x
-
-        elif self.__prev_move.get(line.X) is not None:
-            as_str += f"{self.__prev_move.get(line.X)}, "
-
-        else:
-            line_invalid = True
-
-        if line_y is not None:
-            as_str += f"{line_y}, "
-            self.__prev_move[line.Y] = line_y
-
-        elif self.__prev_move.get(line.Y) is not None:
-            as_str += f"{self.__prev_move.get(line.Y)}, "
-
-        else:
-            line_invalid = True
-
-        if line_z is not None:
-            as_str += f"{line_z}, "
-            self.__prev_move[line.Z] = line_z
-
-        elif self.__prev_move.get(line.Z) is not None:
-            as_str += f"{self.__prev_move.get(line.Z)}, "
-
-        else:
-            line_invalid = True
-
-        as_str = as_str[:-2] + ")"
-
-        if self.__debug:
-            as_str += f" ;{line.raw}\n"
-
-        else:
-            as_str += " \n"
-
-        # endregion
-
-        if line_invalid:
-            logging.debug(f"Invalid line: {line.raw}")
-            self.__lines_invalid += 1
-
-        else:
-            self.__file.write(as_str)
-            self.__lines_converted += 1
-            self.__section_current_size += as_str.count('\n')
-
-    def close(self):
-        # close file
-        self.__file.write(".END\n")
-        self.__file.close()
-
-        # generate header file
-        if self.__section_number > 0:
-            self.__header_file.write(f".PROGRAM {self.__program_name}()\n")
-            for i in range(self.__section_number):
-                self.__header_file.write(f"\tCALL {self.__program_name}_{i}\n")
-
-            self.__header_file.write(".END\n")
-
-        # close the header file
-        self.__header_file.close()
-
-        logging.info("Conversion done")
-        logging.info("Loaded lines: %i", self.__lines_loaded)
-        logging.info("Omitted lines: %i", self.__lines_omitted)
-        logging.info("Invalid lines: %i", self.__lines_invalid)
-        logging.info("Converted lines: %i", self.__lines_converted)
-
-        logging.info(f"Program saved to {self.__file.name}")
-        if self.__section_number > 0:
-            logging.info(f"Header file saved as {self.__header_file.name}")
+from .model.line import Line
 
 
+def convert_to_as(
+    lines: List[Line],
+    extrude_signal: int,
+    retract_signal: int,
+    min_dist: float,
+    override_speed: int | None = None,
+    debug: bool = False,
+) -> List[str]:
+    """Converts the given list of line objects to a list of as commands
+
+    Args:
+        lines (List[Line]): The list of line objects to convert
+        extrude_signal (int): The signal number of the extrusion signal
+        retract_signal (int): The signal number of the retraction signal
+        min_dist (float): The minimum distance parameter
+        debug (bool, optional): If true, additional information will be generated
+        during the conversion. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings formatted to AS commands
+    """
+
+    is_extruding = False
+    is_retracting = False
+
+    speed = 0
+    extrude = 0
+
+    as_str = []
+
+    prev_line = None
+    omitted_lines_num = 0
+    kept_lines_num = 0
+    distance_skipped = 0
+
+    progress_bar = IncrementalBar("Converting", max=len(lines))
+
+    for line in lines:
+
+        progress_bar.next()
+
+        dist_to_previous = 0
+
+        if not line.valid:
+            if line.comment:
+                as_str.append(f"; {line.comment}\n")
+            else:
+                as_str.append(f";{line.raw}\n")
+            continue
+
+        # override speed value if necessary
+        if override_speed is not None:
+            if speed != override_speed:
+                as_str.append(f"SPEED {override_speed} MM/MIN ALWAYS\n")
+                speed = override_speed
+
+        # detect speed change
+        elif speed != line.f_prop and line.f_prop is not None:
+            as_str.append(f"SPEED {line.f_prop} MM/MIN ALWAYS\n")
+            speed = line.f_prop
+
+        # process extrusion logic
+        if line.e_prop is not None:
+
+            # e increase is extrusion
+            if extrude < line.e_prop and not is_extruding:
+                add_extrude(as_str, extrude_signal)
+                is_extruding = True
+                extrude = line.e_prop
+
+            # e decrease is retraction
+            elif extrude > line.e_prop and not is_retracting:
+                if is_extruding:
+                    add_extrude(as_str, False)
+
+                add_retract(as_str, retract_signal)
+                is_retracting = True
+
+            elif extrude == line.e_prop:
+                if is_extruding:
+                    add_extrude(as_str, extrude_signal, False)
+                    is_extruding = False
+                    is_retracting = False
+
+        elif is_extruding:
+            add_extrude(as_str, extrude_signal, False)
+            is_extruding = False
+            is_retracting = False
+
+        # check if the distance is under the minimum distance
+        if prev_line is not None and prev_line.z_prop == line.z_prop:
+            # calculate the distance from the previous point
+            dist_to_previous = sqrt(
+                (prev_line.x_prop - line.x_prop) ** 2
+                + (prev_line.y_prop - line.y_prop) ** 2
+            )
+
+            if dist_to_previous + distance_skipped < min_dist:
+                distance_skipped += dist_to_previous
+                omitted_lines_num += 1
+                continue
+
+        distance_skipped = 0
+
+        as_str.append(line.to_as_command(debug=debug))
+        prev_line = line
+        kept_lines_num += 1
+
+    print("\r", end="")  # delete progressbar
+    print(
+        f"Processed {len(lines)} lines, \
+        omitted {omitted_lines_num} lines, \
+        commands converted to AS: {kept_lines_num}, \
+        length of AS file: {len(as_str)}"
+    )
+
+    return as_str
 
 
+def add_extrude(where: List[str], signal: int, enable: bool = True):
+    """Adds a signal command to start or stop extrusion
+
+    Args:
+        where (List[str]): The list of commands to add the command to
+        signal (int): The number of the extrusion signal
+        enable (bool, optional): If true extrusion will be enabled, otherwise disabled.
+        Defaults to True.
+    """
+    where.append(f'SIGNAL {"" if enable else "-"}{signal}\n')
+
+
+def add_retract(where: List[str], signal: int):
+    """Adds a pulse command to initiate retraction into the generated commands
+
+    Args:
+        where (List[str]): The list of commands to add the command into
+        signal (int): The number of the retraction signal
+    """
+    where.append(f"PULSE {signal}, 0.1\n")

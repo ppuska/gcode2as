@@ -1,6 +1,1 @@
-import coloredlogs
-import logging
-
-coloredlogs.install(fmt='%(asctime)s %(hostname)s %(name)s[%(process)d] %(levelname)s %(message)s', level=logging.DEBUG)
-
-__version__ = "0.0.1"
+__version__ = "0.1.0"
