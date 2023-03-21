@@ -1,127 +1,106 @@
-import logging
-import sys
-import argparse
-from os import path
+"""Main module of the script"""
 
-from progress.bar import IncrementalBar
+import io
+from pathlib import Path
+from typing import Dict, List
+import click
+from colorama import Back, Style
+import inquirer
+
+from pyfiglet import Figlet
+from gcode2as.cli import CLICommand, CLICommandOptions
+from gcode2as.cli.fdm import FDM
+from gcode2as.cli.metal import Metal
+
 
 from . import __version__
-from .parser import parse
-from .converter import Converter
 
 FILE_PATH = "file_path"
 OUTPUT_PATH = "output_file_dir"
 MIN_DIST = "minimum_distance"
-SIGNAL = "signal"
+EXTRUDE_SIGNAL = "extrude_signal"
+RETRACT_SIGNAL = "retract_signal"
+OVERRIDE_SPEED = "override_speed"
 DEBUG_MODE = "debug_mode"
 
-
-def parse_system_args(args):
-    """This function parses the command line arguments given to this script"""
-    # program name and description
-    arg_parser = argparse.ArgumentParser(description="This script converts G-Code to Kawasaki AS Code")
-    # version
-    arg_parser.add_argument('--version', action='version', version=f"gcode2as: {__version__}")
-
-    # input file
-    arg_parser.add_argument('-f', '--file',
-                            dest=FILE_PATH,
-                            type=str,
-                            required=True,
-                            help="The source G-Code file to read"
-                            )
-
-    # output file
-    arg_parser.add_argument('-o', '--output',
-                            dest=OUTPUT_PATH,
-                            type=str,
-                            help="The path of the directory of the output file"
-                            )
-
-    # minimum distance
-    arg_parser.add_argument('--min_dist',
-                            dest=MIN_DIST,
-                            type=float,
-                            default=0.0,
-                            help="The minimum distance between two points in a G-Code command. Under this value"
-                                 "the command gets omitted from the AS code")
-
-    # extrusion signal
-    arg_parser.add_argument('-s', '--signal',
-                            dest=SIGNAL,
-                            type=int,
-                            default=2001,
-                            help="The signal number to turn on when there is an [E]xtrude command in the G-Code")
-
-    # debug mode
-    arg_parser.add_argument('-d', '--debug',
-                            dest=DEBUG_MODE,
-                            action='store_true',
-                            help="Use this flag to include the original G-Code line in the AS program")
-
-    return arg_parser.parse_args(args)
+DEFAULT_MIN_DISTANCE = 2
 
 
-def create_line_generator(file_path: str):
-    """Creates a generator object to generate lines from the read file"""
+@click.command
+@click.argument('file', type=click.File())
+@click.option('-d', is_flag=True, default=False, help="Use the default values for the options")
+@click.option('-v', is_flag=True, default=False, help="More verbosity in the generated code")
+def cli(file: io.TextIOWrapper, d: bool, v: bool):
 
-    with open(file_path, 'r') as file:
-        for line in file:
-            yield line
+    # display fancy logo
+    click.echo(Figlet(justify='center').renderText("gcode2as by Lasram"))
 
+    modes: List[CLICommand] = [FDM(), Metal()]
 
-def main():
-    args = parse_system_args(sys.argv[1:])
-    file_path = vars(args)[FILE_PATH]
-    file_dir, file_name = path.split(file_path)
+    filepath = Path(file.name)
+    filename = filepath.stem
 
-    output_dir = vars(args)[OUTPUT_PATH]
-    if output_dir is None:
-        output_dir = file_dir
+    mode_key = 'mode'
+    min_distance_key = 'min_dist'
+    use_different_output_key = 'use_different_output'
+    out_dir_key = 'output'
 
-    if not path.exists(file_path):
-        logging.error("Could not open file: %s, the file does not exist", file_path)
-        exit(1)
+    # select mode
+    questions = [
+        inquirer.List(
+            mode_key,
+            message='What mode would you like to use?',
+            choices=[mode.message for mode in modes]),
+        inquirer.Text(
+            min_distance_key,
+            message="Enter the minimum distance for simplifying the toolpaths: ",
+            default=DEFAULT_MIN_DISTANCE,
+            ignore=d
+        ),
+        inquirer.Confirm(
+            use_different_output_key,
+            message='Would you like to use a different directory to save the generated file?',
+            default=False
+        ),
+        inquirer.Path(
+            out_dir_key,
+            message="Enter the directory for the generated file",
+            path_type=inquirer.Path.DIRECTORY,
+            exists=True,
+            ignore=lambda answers: not answers[use_different_output_key],
+        )
+    ]
 
-    debug_mode = vars(args)[DEBUG_MODE]
+    answers: Dict[str, str] | None = inquirer.prompt(questions)
 
-    min_dist = vars(args)[MIN_DIST]
-
-    signal = vars(args)[SIGNAL]
-
-    # get the line count
-    line_generator = create_line_generator(file_path)
-    line_count = sum(buffer.count("\n") for buffer in line_generator)
-
-    try:
-        converter = Converter(program_name=path.splitext(file_name)[0],
-                              output_file_path=output_dir,
-                              extrude_signal=signal,
-                              min_dist=min_dist,
-                              debug=debug_mode
-                              )
-
-    except PermissionError as e:
-        logging.error(f"Got a permission error while trying to open a file ({e})")
+    if answers is None:
         return
 
-    line_generator = create_line_generator(file_path)
+    selected = [mode for mode in modes if mode.message ==
+                answers[mode_key]][0]  # the list should only have one element
 
-    logging.info("Starting conversion...")
+    min_distance = answers[min_distance_key]
+    out_dir = answers.get(out_dir_key)
 
-    progress_bar = IncrementalBar("Converting", max=line_count)
+    lines_as = selected.execute(
+        options=CLICommandOptions(
+            file=file,
+            min_distance=float(min_distance),
+            verbose=v
+        )
+    )
 
-    for i, line in enumerate(line_generator):
-        try:
-            parsed_line = parse(line)
-            converter.convert_parsed_line(parsed_line)
+    if lines_as is None:
+        return
 
-        except ValueError:
-            pass
+    if out_dir is None:
+        out_dir = filepath.absolute().parent
 
-        if i % 100 == 0 and i != 0:
-            progress_bar.next(n=100)
-
-    print()
-
-    converter.close()
+    # save the file
+    out_path = out_dir.joinpath(f'{filename}.pg')
+    click.echo(
+        f'Saving generated file as {Back.WHITE}{out_path}{Style.RESET_ALL}'
+    )
+    with open(out_path, 'w', encoding='utf8') as f_open:
+        for line in lines_as:
+            f_open.write(line)
