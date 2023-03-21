@@ -41,7 +41,8 @@ class TestLine(unittest.TestCase):
     def test_converting(self):
         """Tests the convert_to_as method of the Line object"""
         self.test_parsing()
-        self.lines_converted = convert_to_as(self.lines, 0, 1, min_dist=2, debug=True)
+        self.lines_converted = convert_to_as(
+            self.lines, 0, 1, min_dist=2, verbose=True)
 
     def test_formatting(self):
         """Test the test_formatting method from the main module"""

@@ -2,6 +2,7 @@
 
 from typing import List
 from math import sqrt
+from click import echo
 
 from progress.bar import IncrementalBar
 
@@ -14,14 +15,16 @@ def convert_to_as(
     retract_signal: int,
     min_dist: float,
     override_speed: int | None = None,
-    debug: bool = False,
+    verbose: bool = False,
 ) -> List[str]:
     """Converts the given list of line objects to a list of as commands
 
     Args:
         lines (List[Line]): The list of line objects to convert
-        extrude_signal (int): The signal number of the extrusion signal
-        retract_signal (int): The signal number of the retraction signal
+        extrude_signal (int): The signal number of the extrusion signal.
+        If set to 0 the command will not be added
+        retract_signal (int): The signal number of the retraction signal.
+        If set to 0 the command will not be added
         min_dist (float): The minimum distance parameter
         debug (bool, optional): If true, additional information will be generated
         during the conversion. Defaults to False.
@@ -55,7 +58,7 @@ def convert_to_as(
             if line.comment:
                 as_str.append(f"; {line.comment}\n")
             else:
-                as_str.append(f";{line.raw}\n")
+                as_str.append(f"; {line.raw}\n")
             continue
 
         # override speed value if necessary
@@ -81,7 +84,7 @@ def convert_to_as(
             # e decrease is retraction
             elif extrude > line.e_prop and not is_retracting:
                 if is_extruding:
-                    add_extrude(as_str, False)
+                    add_extrude(as_str, extrude_signal, False)
 
                 add_retract(as_str, retract_signal)
                 is_retracting = True
@@ -112,17 +115,15 @@ def convert_to_as(
 
         distance_skipped = 0
 
-        as_str.append(line.to_as_command(debug=debug))
+        as_str.append(line.to_as_command(debug=verbose))
         prev_line = line
         kept_lines_num += 1
 
-    print("\r", end="")  # delete progressbar
-    print(
-        f"Processed {len(lines)} lines, \
-        omitted {omitted_lines_num} lines, \
-        commands converted to AS: {kept_lines_num}, \
-        length of AS file: {len(as_str)}"
-    )
+    echo("\r", nl=False)  # delete progressbar
+    echo(f'Processed {len(lines)} lines')
+    echo(f'Omitted {omitted_lines_num} lines')
+    echo(f'Converted {kept_lines_num} commands to AS')
+    echo(f'The length of the AS file is: {len(as_str)}')
 
     return as_str
 
@@ -136,6 +137,8 @@ def add_extrude(where: List[str], signal: int, enable: bool = True):
         enable (bool, optional): If true extrusion will be enabled, otherwise disabled.
         Defaults to True.
     """
+    if signal == 0:
+        return
     where.append(f'SIGNAL {"" if enable else "-"}{signal}\n')
 
 
@@ -146,4 +149,6 @@ def add_retract(where: List[str], signal: int):
         where (List[str]): The list of commands to add the command into
         signal (int): The number of the retraction signal
     """
+    if signal == 0:
+        return
     where.append(f"PULSE {signal}, 0.1\n")
