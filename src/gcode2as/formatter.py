@@ -1,7 +1,14 @@
+from io import TextIOWrapper
 from math import ceil
 from typing import List
 
 MAX_PROGRAM_LENGTH = 1000
+
+
+def create_line_generator(file: TextIOWrapper):
+    """Creates a generator object to generate lines from the read file"""
+    for line in file:
+        yield line
 
 
 def format_program(lines: List[str], program_name: str) -> str:

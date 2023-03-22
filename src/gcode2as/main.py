@@ -10,6 +10,7 @@ import inquirer
 from pyfiglet import Figlet
 from gcode2as.cli import CLICommand, CLICommandOptions
 from gcode2as.cli.fdm import FDM
+from gcode2as.cli.laser_cut import LaserCut
 from gcode2as.cli.metal import Metal
 
 
@@ -35,7 +36,7 @@ def cli(file: io.TextIOWrapper, d: bool, v: bool):
     # display fancy logo
     click.echo(Figlet(justify='center').renderText("gcode2as by Lasram"))
 
-    modes: List[CLICommand] = [FDM(), Metal()]
+    modes: List[CLICommand] = [FDM(), Metal(), LaserCut()]
 
     filepath = Path(file.name)
     filename = filepath.stem

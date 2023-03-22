@@ -1,4 +1,3 @@
-from io import TextIOWrapper
 
 from click import echo
 from colorama import Back, Style
