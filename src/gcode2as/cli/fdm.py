@@ -1,5 +1,5 @@
-from io import TextIOWrapper
 import math
+from os import get_terminal_size
 from typing import Dict, List, Tuple
 
 from click import echo
@@ -11,7 +11,6 @@ from gcode2as.cli import CLICommand, CLICommandOptions
 from gcode2as.cli.utils import inquirer_elements
 from gcode2as.cli.utils.validation import validate_is_int
 from gcode2as.converter import Converter
-from gcode2as.formatter import create_line_generator
 
 
 class FDM(CLICommand):
@@ -25,7 +24,8 @@ class FDM(CLICommand):
         self.__y_pos = 0
         self.__z_pos = 0
         self.__e_pos = 0
-        self.__feed = 0
+
+        self.__override_speed: float | None = None
 
         self.__skipped_distance = 0
         self.__skipped_moves = 0
@@ -78,17 +78,28 @@ class FDM(CLICommand):
         echo(f"Retract signal set to {self.__retract_signal}")
         if override_speed is not None:
             echo(f"Speed is overridden to {override_speed}")
-            override_speed = float(override_speed)
+            self.__override_speed = float(override_speed)
 
         converter = Converter(options.file)
 
+        # override the speed
+        if self.__override_speed is not None:
+            lines = []
+            lines.append(
+                f'SPEED {self.__override_speed} ALWAYS ; Master speed override\n'
+            )
+
         lines = converter.convert(self.__process_line)
 
+        linewidth = get_terminal_size().columns
+
         echo(f'Conversion {Back.GREEN}done{Style.RESET_ALL}.')
+        echo('*' * linewidth)
         echo(f'{Back.CYAN}Stats:{Style.RESET_ALL}')
         echo(f'\tGCODE file had {converter.file_length} lines')
         echo(f'\tOmitted {self.__skipped_moves} lines')
         echo(f'\tAS file length is {len(lines)} lines')
+        echo('*' * linewidth)
 
         return lines
 
@@ -146,15 +157,14 @@ class FDM(CLICommand):
         x_pos, y_pos, z_pos = position
 
         # feed
-        if line.params.get('F') is not None:
-            self.__feed = feed  # store the feed
+        if feed is not None and self.__override_speed is None:
             # append the command
             lines.append(f'SPEED {feed} MM/MIN ALWAYS')
 
         # xyz positions
         self.__x_pos = x_pos if x_pos is not None else self.__x_pos
         self.__y_pos = y_pos if y_pos is not None else self.__y_pos
-        self.__z_pos = y_pos if y_pos is not None else self.__z_pos
+        self.__z_pos = z_pos if z_pos is not None else self.__z_pos
 
         move_command = f'LMOVE SHIFT(a BY {self.__x_pos}, {self.__y_pos}, {self.__z_pos})'
 
@@ -179,8 +189,7 @@ class FDM(CLICommand):
         x_pos, y_pos, z_pos = position
 
         # feed
-        if feed is not None:
-            self.__feed = feed  # store the feed
+        if feed is not None and self.__override_speed is None:
             # append the command
             lines.append(f'SPEED {feed} MM/MIN ALWAYS\n')
 
@@ -227,7 +236,7 @@ class FDM(CLICommand):
         # append the xyz move
         self.__x_pos = x_pos if x_pos is not None else self.__x_pos
         self.__y_pos = y_pos if y_pos is not None else self.__y_pos
-        self.__z_pos = y_pos if y_pos is not None else self.__z_pos
+        self.__z_pos = z_pos if z_pos is not None else self.__z_pos
 
         move_command = f'LMOVE SHIFT(a BY {self.__x_pos}, {self.__y_pos}, {self.__z_pos})'
 

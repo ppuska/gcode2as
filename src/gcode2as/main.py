@@ -12,6 +12,7 @@ from gcode2as.cli import CLICommand, CLICommandOptions
 from gcode2as.cli.fdm import FDM
 from gcode2as.cli.laser_cut import LaserCut
 from gcode2as.cli.metal import Metal
+from gcode2as.formatter import format_program
 
 
 from . import __version__
@@ -94,6 +95,8 @@ def cli(file: io.TextIOWrapper, d: bool, v: bool):
     if lines_as is None:
         return
 
+    formatted = format_program(lines_as, filename)
+
     if out_dir is None:
         out_dir = filepath.absolute().parent
 
@@ -103,5 +106,4 @@ def cli(file: io.TextIOWrapper, d: bool, v: bool):
         f'Saving generated file as {Back.WHITE}{out_path}{Style.RESET_ALL}'
     )
     with open(out_path, 'w', encoding='utf8') as f_open:
-        for line in lines_as:
-            f_open.write(line)
+        f_open.write(formatted)
