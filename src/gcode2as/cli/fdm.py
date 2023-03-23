@@ -86,7 +86,7 @@ class FDM(CLICommand):
         if self.__override_speed is not None:
             lines = []
             lines.append(
-                f'SPEED {self.__override_speed} ALWAYS ; Master speed override\n'
+                f'SPEED {self.__override_speed} MM/MIN ALWAYS ; Master speed override\n'
             )
 
         lines = converter.convert(self.__process_line)
