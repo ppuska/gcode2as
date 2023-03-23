@@ -30,7 +30,7 @@ def format_program(lines: List[str], program_name: str) -> str:
         as_program = f".PROGRAM {program_name}\n"
 
         for line in lines:
-            as_program += line
+            as_program += '\t' + line
 
         as_program += ".END"
         return as_program
@@ -39,14 +39,15 @@ def format_program(lines: List[str], program_name: str) -> str:
 
     for i in range(subprogram_number):
         as_program += f".PROGRAM {program_name}_{i}\n"
-        as_program += "".join(
+        as_program += "\t".join(
             lines[i * MAX_PROGRAM_LENGTH: (i + 1) * MAX_PROGRAM_LENGTH]
         )
         as_program += ".END\n\n"
 
     as_program += f".PROGRAM {program_name}\n"
+
     for i in range(subprogram_number):
-        as_program += f"CALL {program_name}_{i}\n"
+        as_program += f"\tCALL {program_name}_{i}\n"
 
     as_program += ".END\n"
 

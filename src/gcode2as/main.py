@@ -15,7 +15,7 @@ from gcode2as.cli.metal import Metal
 from gcode2as.formatter import format_program
 
 
-from . import __version__
+from gcode2as import __version__
 
 FILE_PATH = "file_path"
 OUTPUT_PATH = "output_file_dir"

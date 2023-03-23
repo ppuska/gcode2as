@@ -12,6 +12,8 @@ from progress.bar import IncrementalBar
 class Converter:
     __gcode: GcodeParser | None
 
+    TP_LINE_WIDTH = 76
+
     def __init__(self, file: TextIOWrapper) -> None:
         self.__gcode = GcodeParser(file.read(), include_comments=True)
 
@@ -25,11 +27,17 @@ class Converter:
         for gcode_line in self.__gcode.lines:
             processed_line = line_processor(gcode_line)
 
+            if not processed_line:
+                continue
+
             # check if the returned value is a list
             if isinstance(processed_line, list):
                 processed_line = [
                     line if line.endswith('\n') else f'{line}\n' for line in processed_line
                 ]
+
+                if not all([line.endswith('\n') for line in processed_line]):
+                    raise Exception('Not all lines end with newline')
 
             # the returned value is a string
             elif not processed_line.endswith('\n'):
@@ -42,3 +50,10 @@ class Converter:
     @property
     def file_length(self):
         return len(self.__gcode.lines)
+
+    @staticmethod
+    def format_to_as_line_comment(message: str, pad: bool = False):
+        if not pad or len(message) > Converter.TP_LINE_WIDTH:
+            return f'; {message}\n'
+
+        return f'; {message}{"*" * (Converter.TP_LINE_WIDTH - len(message))}\n'
