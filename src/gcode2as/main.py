@@ -4,16 +4,18 @@ import io
 from pathlib import Path
 from typing import Dict, List
 import click
-from colorama import Back, Style
+from colorama import Back, Fore
 import inquirer
 
 from pyfiglet import Figlet
 from gcode2as.cli import CLICommand, CLICommandOptions
 from gcode2as.cli.fdm import FDM
+from gcode2as.cli.laser_cut import LaserCut
 from gcode2as.cli.metal import Metal
+from gcode2as.formatter import format_program
 
 
-from . import __version__
+from gcode2as import __version__
 
 FILE_PATH = "file_path"
 OUTPUT_PATH = "output_file_dir"
@@ -35,7 +37,7 @@ def cli(file: io.TextIOWrapper, d: bool, v: bool):
     # display fancy logo
     click.echo(Figlet(justify='center').renderText("gcode2as by Lasram"))
 
-    modes: List[CLICommand] = [FDM(), Metal()]
+    modes: List[CLICommand] = [FDM(), Metal(), LaserCut()]
 
     filepath = Path(file.name)
     filename = filepath.stem
@@ -93,14 +95,15 @@ def cli(file: io.TextIOWrapper, d: bool, v: bool):
     if lines_as is None:
         return
 
+    formatted = format_program(lines_as, filename)
+
     if out_dir is None:
         out_dir = filepath.absolute().parent
 
     # save the file
     out_path = out_dir.joinpath(f'{filename}.pg')
     click.echo(
-        f'Saving generated file as {Back.WHITE}{out_path}{Style.RESET_ALL}'
+        f'Saving generated file as {Fore.GREEN}{out_path}{Fore.RESET}'
     )
     with open(out_path, 'w', encoding='utf8') as f_open:
-        for line in lines_as:
-            f_open.write(line)
+        f_open.write(formatted)

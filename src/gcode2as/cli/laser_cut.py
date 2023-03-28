@@ -1,105 +1,86 @@
 import math
-from os import get_terminal_size
-from typing import Dict, List, Tuple
-
+from typing import List, Tuple
 from click import echo
 from colorama import Back, Style
-import inquirer
-from gcodeparser.gcode_parser import GcodeLine
 
+from gcodeparser.gcode_parser import GcodeLine
+import inquirer
 from gcode2as.cli import CLICommand, CLICommandOptions
-from gcode2as.cli.utils import inquirer_elements
 from gcode2as.cli.utils.validation import validate_is_int
 from gcode2as.converter import Converter
 
 
-class FDM(CLICommand):
-
-    DEFAULT_EXTRUDE_SIGNAL = 2001
-    DEFAULT_RETRACT_SIGNAL = 2002
+class LaserCut(CLICommand):
 
     def __init__(self) -> None:
-        self.__is_extruding = False
         self.__x_pos = 0
         self.__y_pos = 0
         self.__z_pos = 0
-        self.__e_pos = 0
 
-        self.__override_speed: float | None = None
+        self.__laser_on_signal: int = 0
+        self.__laser_off_signal: int | None = None
+        self.__is_laser_on = False
 
         self.__skipped_distance = 0
         self.__skipped_moves = 0
-
-        self.__extrude_signal = 0
-        self.__retract_signal = 0
 
         self.__execute_options: CLICommandOptions = None
 
     @property
     def message(self) -> str:
-        return "FDM 3D Printing"
+        return "Laser cutting"
 
-    def execute(self, options: CLICommandOptions):
+    def execute(self, options: CLICommandOptions) -> List[str] | None:
         self.__execute_options = options
 
-        # keys for the inquirer
-        extrude_key = 'extrude'
-        retract_key = 'retract'
+        laser_control_type_key = 'laser_control_type'
+        one_signal_key = 'One signal'
+        two_signal_key = 'Two signals'
+        laser_control_signal_first_key = 'laser_control_first_signal'
+        laser_control_signal_second_key = 'laser_control_second_signal'
 
         questions = [
+            inquirer.List(
+                laser_control_type_key,
+                message='How is the laser controlled?',
+                choices=[one_signal_key, two_signal_key]
+            ),
             inquirer.Text(
-                extrude_key,
-                message='Specify the extrude signal',
-                default=FDM.DEFAULT_EXTRUDE_SIGNAL,
+                laser_control_signal_first_key,
+                message='Enter the signal number to turn on the laser',
                 validate=validate_is_int
             ),
             inquirer.Text(
-                retract_key,
-                message='Specify the retract signal',
-                default=FDM.DEFAULT_RETRACT_SIGNAL,
+                laser_control_signal_second_key,
+                message='Enter the signal number to turn off the laser',
                 validate=validate_is_int,
-            ),
-            *inquirer_elements.ask_override_speed()
+                ignore=lambda answers: answers[laser_control_type_key] == one_signal_key
+            )
         ]
 
-        answers: Dict[str, str] | None = inquirer.prompt(questions)
+        answers = inquirer.prompt(questions)
 
         if answers is None:
             return
 
-        self.__extrude_signal = int(answers[extrude_key])
-        self.__retract_signal = int(answers[retract_key])
+        self.__laser_on_signal = int(answers[laser_control_signal_first_key])
+        laser_off_string = answers.get(laser_control_signal_second_key)
 
-        override_speed = answers.get(
-            inquirer_elements.OVERRIDE_SPEED_VALUE_KEY
-        )
+        if laser_off_string is None:
+            self.__laser_off_signal = None
 
-        echo(f"Extrude signal set to {self.__extrude_signal}")
-        echo(f"Retract signal set to {self.__retract_signal}")
-        if override_speed is not None:
-            echo(f"Speed is overridden to {override_speed}")
-            self.__override_speed = float(override_speed)
+        else:
+            self.__laser_off_signal = int(laser_off_string)
 
         converter = Converter(options.file)
 
-        # override the speed
-        if self.__override_speed is not None:
-            lines = []
-            lines.append(
-                f'SPEED {self.__override_speed} MM/MIN ALWAYS ; Master speed override\n'
-            )
-
         lines = converter.convert(self.__process_line)
 
-        linewidth = get_terminal_size().columns
-
         echo(f'Conversion {Back.GREEN}done{Style.RESET_ALL}.')
-        echo('*' * linewidth)
         echo(f'{Back.CYAN}Stats:{Style.RESET_ALL}')
         echo(f'\tGCODE file had {converter.file_length} lines')
         echo(f'\tOmitted {self.__skipped_moves} lines')
         echo(f'\tAS file length is {len(lines)} lines')
-        echo('*' * linewidth)
 
         return lines
 
@@ -109,7 +90,6 @@ class FDM(CLICommand):
 
         # check for parameters
         feed = line.params.get('F')
-        extrude = line.params.get('E')
         position = (
             line.params.get('X'),
             line.params.get('Y'),
@@ -136,7 +116,6 @@ class FDM(CLICommand):
                 self.__process_g1(
                     line,
                     feed,
-                    extrude,
                     position
                 )
             )
@@ -157,7 +136,7 @@ class FDM(CLICommand):
         x_pos, y_pos, z_pos = position
 
         # feed
-        if feed is not None and self.__override_speed is None:
+        if line.params.get('F') is not None:
             # append the command
             lines.append(f'SPEED {feed} MM/MIN ALWAYS')
 
@@ -175,13 +154,21 @@ class FDM(CLICommand):
 
         lines.append(move_command)
 
+        if self.__is_laser_on:
+            if self.__laser_off_signal is None:
+                # one signal laser control
+                lines.append(f'SIGNAL -{self.__laser_on_signal}')
+
+            else:
+                # two signal laser control
+                lines.append(f'PULSE -{self.__laser_off_signal}')
+
         return lines
 
     def __process_g1(
             self,
             line: GcodeLine,
             feed: float | None,
-            extrude: float | None,
             position: Tuple[float | None, float | None, float | None]
     ):
         lines = []
@@ -189,29 +176,21 @@ class FDM(CLICommand):
         x_pos, y_pos, z_pos = position
 
         # feed
-        if feed is not None and self.__override_speed is None:
+        if feed is not None:
             # append the command
             lines.append(f'SPEED {feed} MM/MIN ALWAYS\n')
 
-        # extrusion
-        if extrude is not None and extrude > self.__e_pos:
-            # update the extrusion value
-            self.__e_pos = extrude
+        # laser control
+        if not self.__is_laser_on:
+            if self.__laser_off_signal is None:
+                # one signal laser control
+                lines.append(f'SIGNAL {self.__laser_on_signal}')
 
-            # extrusion start
-            if not self.__is_extruding and self.__extrude_signal != 0:
-                lines.append(f'SIGNAL {self.__extrude_signal}\n')
-                self.__is_extruding = True
+            else:
+                # two signal laser control
+                lines.append(f'PULSE {self.__laser_on_signal}')
 
-        elif self.__is_extruding:
-            lines.append(f'SIGNAL -{self.__extrude_signal}\n')
-            self.__is_extruding = False
-
-            # add retraction if enabled
-            if self.__retract_signal != 0:
-                lines.append(
-                    f'PULSE {self.__retract_signal}, 0.1'
-                )
+            self.__is_laser_on = True
 
         # xyz positions
         # simplification of path is only possible if the line has the same z coordinate
