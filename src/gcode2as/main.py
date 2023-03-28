@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 from typing import Dict, List
 import click
-from colorama import Back, Style
+from colorama import Back, Fore
 import inquirer
 
 from pyfiglet import Figlet
@@ -103,7 +103,7 @@ def cli(file: io.TextIOWrapper, d: bool, v: bool):
     # save the file
     out_path = out_dir.joinpath(f'{filename}.pg')
     click.echo(
-        f'Saving generated file as {Back.WHITE}{out_path}{Style.RESET_ALL}'
+        f'Saving generated file as {Fore.GREEN}{out_path}{Fore.RESET}'
     )
     with open(out_path, 'w', encoding='utf8') as f_open:
         f_open.write(formatted)

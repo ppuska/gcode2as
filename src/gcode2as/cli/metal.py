@@ -1,14 +1,11 @@
 
-from collections import namedtuple
-import math
 from typing import List, Tuple
 from click import echo
-from colorama import Back, Style
+from colorama import Back, Fore, Style
 import inquirer
 from gcodeparser.gcode_parser import GcodeLine
 
 from gcode2as.cli import CLICommand, CLICommandOptions
-from gcode2as.cli.utils import inquirer_elements
 from gcode2as.cli.utils.validation import validate_is_float
 from gcode2as.converter import Converter
 
@@ -38,7 +35,7 @@ class Metal(CLICommand):
 
     def execute(self, options: CLICommandOptions):
         self.__execute_options = options
-        echo(f'{Back.YELLOW}Warning:{Back.WHITE} The generated code will only work with robots that have a welding card installed.{Style.RESET_ALL}')
+        echo(f'[{Fore.YELLOW}Warning{Fore.RESET}]: The generated code will only work with robots that have a welding card installed.')
 
         speed = inquirer.text(
             message='Set the welding speed',
