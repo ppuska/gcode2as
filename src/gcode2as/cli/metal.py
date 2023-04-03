@@ -1,5 +1,6 @@
 
-from typing import List, Tuple
+import math
+from typing import List, Optional, Tuple
 from click import echo
 from colorama import Back, Fore, Style
 import inquirer
@@ -22,10 +23,10 @@ class Metal(CLICommand):
         self.__skipped_distance = 0
         self.__skipped_moves = 0
 
-        self.__last_g0: GcodeLine | None = None
+        self.__last_g0: Optional[GcodeLine] = None
         self.__weld: List[GcodeLine] = []
 
-        self.__is_welding = False
+        self.__is_using_vase_mode = False
 
         self.__execute_options: CLICommandOptions = None
 
@@ -37,11 +38,30 @@ class Metal(CLICommand):
         self.__execute_options = options
         echo(f'[{Fore.YELLOW}Warning{Fore.RESET}]: The generated code will only work with robots that have a welding card installed.')
 
-        speed = inquirer.text(
-            message='Set the welding speed',
-            validate=validate_is_float,
-            default=15,
-        )
+        speed_key = 'speed'
+        vase_mode_key = 'vase mode'
+
+        questions = [
+            inquirer.Confirm(
+                vase_mode_key,
+                message="Is the model sliced in vase mode (spiralise outer contours)?",
+            ),
+            inquirer.Text(
+                speed_key,
+                message='Set the welding speed',
+                validate=validate_is_float,
+                default=15
+            )
+        ]
+
+        answers = inquirer.prompt(questions)
+
+        if answers is None:
+            return
+
+        speed = answers[speed_key]
+
+        self.__is_using_vase_mode = answers[vase_mode_key]
 
         self.__welding_speed = float(speed)
 
@@ -86,9 +106,16 @@ class Metal(CLICommand):
         if self.__weld:
             lines.extend(self.__process_weld())
 
+        echo(f'[{Fore.BLUE}Info{Fore.RESET}]: Model converted. Stats:')
+        echo(
+            f'\t{Fore.LIGHTBLACK_EX}GCode lines: {converter.file_length} -> AS lines: {len(lines)}'
+        )
+        echo(f'\tOmitted lines: {self.__skipped_moves}{Style.RESET_ALL}')
+
         return lines
 
-    def __process_line(self, line: GcodeLine):
+    def __process_line(self, line: GcodeLine) -> Optional[List[str]]:
+        """Gets called on each GcodeLine object to convert it to a list of strings"""
         processed_lines: List[str] = []
 
         # process comment-only lines
@@ -117,6 +144,7 @@ class Metal(CLICommand):
         return processed_lines
 
     def __process_g0(self, line: GcodeLine, weld_start: bool = False):
+        """Processes a single line of G0 code instruction"""
         lines = []
 
         feed, position = Metal.get_line_params(line)
@@ -152,6 +180,7 @@ class Metal(CLICommand):
         return lines
 
     def __process_g1(self, line: GcodeLine):
+        """Processes a single line of G1 G-code command"""
 
         _, position = Metal.get_line_params(line)
 
@@ -189,9 +218,13 @@ class Metal(CLICommand):
 
             x_pos, y_pos, z_pos = position
 
+            skip_move = self.__check_if_move_skip(x_pos, y_pos, z_pos)
+
             self.__x_pos = x_pos if x_pos is not None else self.__x_pos
             self.__y_pos = y_pos if y_pos is not None else self.__y_pos
             self.__z_pos = z_pos if z_pos is not None else self.__z_pos
+
+            move_command = ''
 
             if weld == self.__weld[-1]:
                 # process the last weld
@@ -201,6 +234,9 @@ class Metal(CLICommand):
                 if self.__execute_options.verbose:
                     move_command += f' ;{weld.gcode_str}'
 
+            elif skip_move:
+                continue
+
             else:
 
                 move_command = f'LWC SHIFT(a BY {self.__x_pos}, {self.__y_pos}, {self.__z_pos}), 1'
@@ -209,15 +245,48 @@ class Metal(CLICommand):
                     move_command += f' ;{weld.command}'
 
                 if self.__execute_options.verbose:
-                    move_command += f' ;{weld.gcode_str}'
+                    move_command += f' ;{weld.gcode_str} dist: {self.__skipped_distance}'
 
-            move_command += '\n'
+            if move_command:
+                move_command += '\n'
 
             lines.append(move_command)
 
         self.__weld = []
 
         return lines
+
+    def __check_if_move_skip(self, x_pos: Optional[float], y_pos: Optional[float], z_pos: Optional[float]) -> bool:
+        # the move can only be skipped if the z coordinate matches or we are using vase mode
+        abs_delta = 0
+
+        if not self.__is_using_vase_mode:
+            if z_pos is None or z_pos == self.__z_pos:
+                delta_x = self.__x_pos - x_pos if x_pos is not None else 0
+                delta_y = self.__y_pos - y_pos if y_pos is not None else 0
+
+                abs_delta = math.sqrt(delta_x ** 2 + delta_y ** 2)
+
+        else:
+            delta_x = self.__x_pos - x_pos if x_pos is not None else 0
+            delta_y = self.__y_pos - y_pos if y_pos is not None else 0
+            delta_z = self.__z_pos - z_pos if z_pos is not None else 0
+
+            abs_delta = math.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+        # check if the delta is smaller than the specified minimum distance
+        if abs_delta <= self.__execute_options.min_distance:
+            self.__skipped_distance += abs_delta
+            # check if the already skipped distance is smaller than the minimum distance
+            if self.__skipped_distance < self.__execute_options.min_distance:
+                self.__skipped_moves += 1
+                return True
+
+            # if not, append the move and reset the counter
+            else:
+                self.__skipped_distance = 0
+
+        return False
 
     @staticmethod
     def get_line_params(line: GcodeLine) -> Tuple[float | None, Tuple[float | None, float | None, float | None]]:

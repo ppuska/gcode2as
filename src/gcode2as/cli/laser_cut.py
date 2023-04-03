@@ -1,5 +1,5 @@
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from click import echo
 from colorama import Back, Style
 
@@ -18,13 +18,13 @@ class LaserCut(CLICommand):
         self.__z_pos = 0
 
         self.__laser_on_signal: int = 0
-        self.__laser_off_signal: int | None = None
+        self.__laser_off_signal: Optional[int] = None
         self.__is_laser_on = False
 
         self.__skipped_distance = 0
         self.__skipped_moves = 0
 
-        self.__execute_options: CLICommandOptions = None
+        self.__execute_options: Optional[CLICommandOptions] = None
 
     @property
     def message(self) -> str:
@@ -36,6 +36,8 @@ class LaserCut(CLICommand):
         laser_control_type_key = 'laser_control_type'
         one_signal_key = 'One signal'
         two_signal_key = 'Two signals'
+        
+        vase_mode_key = 'vase_mode'
         laser_control_signal_first_key = 'laser_control_first_signal'
         laser_control_signal_second_key = 'laser_control_second_signal'
 
