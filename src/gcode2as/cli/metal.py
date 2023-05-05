@@ -22,11 +22,13 @@ class Metal(CLICommand):
 
         self.__skipped_distance = 0
         self.__skipped_moves = 0
+        self.__lines_comment = 0
 
         self.__last_g0: Optional[GcodeLine] = None
         self.__weld: List[GcodeLine] = []
 
         self.__is_using_vase_mode = False
+        self.__is_inverted = False
 
         self.__execute_options: CLICommandOptions = None
 
@@ -40,6 +42,7 @@ class Metal(CLICommand):
 
         speed_key = 'speed'
         vase_mode_key = 'vase mode'
+        inverted_key = 'inverted'
 
         questions = [
             inquirer.Confirm(
@@ -51,6 +54,11 @@ class Metal(CLICommand):
                 message='Set the welding speed',
                 validate=validate_is_float,
                 default=15
+            ),
+            inquirer.Confirm(
+                inverted_key,
+                message="Is the model inverted (upside down)?",
+                default=False,
             )
         ]
 
@@ -62,6 +70,8 @@ class Metal(CLICommand):
         speed = answers[speed_key]
 
         self.__is_using_vase_mode = answers[vase_mode_key]
+
+        self.__is_inverted = answers[inverted_key]
 
         self.__welding_speed = float(speed)
 
@@ -110,7 +120,10 @@ class Metal(CLICommand):
         echo(
             f'\t{Fore.LIGHTBLACK_EX}GCode lines: {converter.file_length} -> AS lines: {len(lines)}'
         )
-        echo(f'\tOmitted lines: {self.__skipped_moves}{Style.RESET_ALL}')
+        echo(f'\tOmitted lines: {self.__skipped_moves}')
+        echo(
+            f'\tThe code contains {self.__lines_comment} comments, which is {self.__lines_comment / len(lines) * 100}% of the file{Style.RESET_ALL}'
+        )
 
         return lines
 
@@ -121,6 +134,7 @@ class Metal(CLICommand):
         # process comment-only lines
         if line.command[0] == ';':
             processed_lines.append(f'; {line.comment}')
+            self.__lines_comment += 1
 
         # G0 move
         elif line.command[0] == 'G' and line.command[1] == 0:
@@ -150,6 +164,9 @@ class Metal(CLICommand):
         feed, position = Metal.get_line_params(line)
 
         x_pos, y_pos, z_pos = position
+
+        if self.__is_inverted and z_pos is not None:
+            z_pos = -z_pos
 
         # xyz positions
         self.__x_pos = x_pos if x_pos is not None else self.__x_pos
@@ -217,6 +234,10 @@ class Metal(CLICommand):
             _, position = Metal.get_line_params(weld)
 
             x_pos, y_pos, z_pos = position
+
+            # check if the model is inverted
+            if self.__is_inverted and z_pos is not None:
+                z_pos = -z_pos
 
             skip_move = self.__check_if_move_skip(x_pos, y_pos, z_pos)
 
